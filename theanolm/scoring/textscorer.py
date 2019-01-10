@@ -70,10 +70,21 @@ class TextScorer(object):
                                         dtype='int64')
         batch_class_ids.tag.test_value = test_value(
             size=(21, 4), high=self._vocabulary.num_classes())
+
+        all_class_ids = tensor.vector('textscorer/all_class_ids',
+                                        dtype='int64')
+        all_class_ids.tag.test_value = test_value(
+            size=(21,), high=self._vocabulary.num_classes())
+
         membership_probs = tensor.matrix('textscorer/membership_probs',
                                          dtype=theano.config.floatX)
         membership_probs.tag.test_value = test_value(
             size=(20, 4), high=1.0)
+   
+        membership_probs_output_vec = tensor.tensor3('textscorer/membership_probs_output_vec',
+                                         dtype=theano.config.floatX)
+        membership_probs_output_vec.tag.test_value = test_value(
+            size=(20, 4, 5), high=1.0)
 
         # Convert out-of-shortlist words to <unk> in input.
         shortlist_size = self._vocabulary.num_shortlist_words()
@@ -90,8 +101,12 @@ class TextScorer(object):
         target_word_ids = batch_word_ids[1:]
 
         logprobs = tensor.log(network.target_probs())
+        logprobs_output_vec = tensor.log(network.output_probs())
+        logprobs_output_vec = logprobs_output_vec[:, :, all_class_ids]
         # Add logprobs from the class membership of the predicted word.
+        
         logprobs += tensor.log(membership_probs)
+        logprobs_output_vec += tensor.log(membership_probs_output_vec)
 
         mask = network.mask
         if use_shortlist and network.oos_logprobs is not None:
@@ -99,6 +114,8 @@ class TextScorer(object):
             # probability) is multiplied by the fraction of the actual word
             # within the set of OOS words.
             logprobs += network.oos_logprobs[target_word_ids]
+            logprobs_output_vec += tensor.tile(network.oos_logprobs, (logprobs_output_vec.shape[0], logprobs_output_vec.shape[1], 1))
+            
             # Always exclude OOV words when using a shortlist - No probability
             # mass is left for them.
             mask *= tensor.neq(target_word_ids, self._unk_id)
@@ -120,6 +137,22 @@ class TextScorer(object):
             name='target_logprobs',
             on_unused_input='ignore',
             profile=profile)
+
+        # Ignore unused input variables, because is_training is only used by
+        # dropout layer.
+        #mask_output_vec = tensor.tile(mask.reshape([membership_probs.shape[0],membership_probs.shape[1],1]),(1,1,self._vocabulary.num_classes()))
+        masked_logprobs_output_vec = logprobs_output_vec * tensor.cast(mask, theano.config.floatX)
+        self._output_vec_logprobs_function = theano.function(
+            [batch_word_ids, batch_class_ids, all_class_ids, membership_probs_output_vec, network.mask],
+            [masked_logprobs_output_vec, mask],
+            givens=[(network.input_word_ids, input_word_ids),
+                    (network.input_class_ids, input_class_ids),
+                    (network.target_class_ids, target_class_ids),
+                    (network.is_training, numpy.int8(0))],
+            name='target_logprobs',
+            on_unused_input='ignore',
+            profile=profile)
+
 
         # If some word is not in the training data, its class membership
         # probability will be zero. We want to ignore those words. Multiplying
@@ -188,6 +221,62 @@ class TextScorer(object):
         for seq_index in range(logprobs.shape[1]):
             seq_mask = mask[1:, seq_index]
             seq_logprobs = logprobs[seq_mask == 1, seq_index]
+            # The new mask also masks excluded tokens, replace those with None.
+            seq_mask = new_mask[seq_mask == 1, seq_index]
+            seq_logprobs = [lp if m == 1 else None
+                            for lp, m in zip(seq_logprobs, seq_mask)]
+            result.append(seq_logprobs)
+
+        return result
+
+    def score_batch_output(self, word_ids, class_ids, all_class_ids, membership_probs_output_vec, mask):
+        """Computes the log probability vectors predicted by the neural network for
+        the words in a mini-batch.
+
+        The result will be returned in a list of lists. The indices will be a
+        transpose of those of the input matrices, so that the first index is the
+        sequence, not the time step. The lists will contain ``None`` values in
+        place of any ``<unk>`` tokens, if the constructor was given
+        ``exclude_unk=True``. When using a shortlist, the lists will always
+        contain ``None`` in place of OOV words, and if ``exclude_unk=True`` was
+        given, also in place of OOS words. Words with zero class membership
+        probability will have ``-inf`` log probability.
+
+        :type word_ids: numpy.ndarray of an integer type
+        :param word_ids: a 2-dimensional matrix, indexed by time step and
+                         sequence, that contains the word IDs
+
+        :type class_ids: numpy.ndarray of an integer type
+        :param class_ids: a 1-dimensional matrix, that contains the class IDs
+                          of the words in the vocabulary
+
+        :type membership_probs: numpy.ndarray of a floating point type
+        :param membership_probs: a 1-dimensional array, that contains the class
+                                 membership probabilities of all the words in
+                                 the vocabulary
+
+        :type mask: numpy.ndarray of a floating point type
+        :param mask: a 2-dimensional matrix, indexed by time step and sequence,
+                     that masks out elements past the sequence ends
+
+        :rtype: list of lists
+        :returns: logprob of each word in each sequence, ``None`` values
+                  indicating excluded <unk> tokens
+        """
+
+        result = []
+        membership_probs_output_vec = membership_probs_output_vec.astype(theano.config.floatX)
+
+        # target_logprobs_function() uses the word and class IDs of the entire
+        # mini-batch, but membership probs and mask are only for the output.
+        logprobs, new_mask = self._output_vec_logprobs_function(word_ids,
+                                                            class_ids,
+                                                            all_class_ids,
+                                                            membership_probs_output_vec[1:],
+                                                            mask[1:])
+        for seq_index in range(logprobs.shape[1]):
+            seq_mask = mask[1:, seq_index]
+            seq_logprobs = logprobs[seq_mask == 1, seq_index, :]
             # The new mask also masks excluded tokens, replace those with None.
             seq_mask = new_mask[seq_mask == 1, seq_index]
             seq_logprobs = [lp if m == 1 else None
