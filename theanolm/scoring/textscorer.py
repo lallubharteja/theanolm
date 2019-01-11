@@ -141,7 +141,8 @@ class TextScorer(object):
         # Ignore unused input variables, because is_training is only used by
         # dropout layer.
         #mask_output_vec = tensor.tile(mask.reshape([membership_probs.shape[0],membership_probs.shape[1],1]),(1,1,self._vocabulary.num_classes()))
-        masked_logprobs_output_vec = logprobs_output_vec * tensor.cast(mask, theano.config.floatX)
+        mask_output_vec = mask.reshape([mask.shape[0],mask.shape[1],1])
+        masked_logprobs_output_vec = logprobs_output_vec * tensor.cast(mask_output_vec, theano.config.floatX)
         self._output_vec_logprobs_function = theano.function(
             [batch_word_ids, batch_class_ids, all_class_ids, membership_probs_output_vec, network.mask],
             [masked_logprobs_output_vec, mask],
