@@ -294,13 +294,15 @@ def _output_vectors_text(input_file, vocabulary, scorer, output_file,
             seq_mask = mask[:, seq_index]
             seq_word_ids = seq_word_ids[seq_mask == 1]
             seq_words = words[seq_index]
-            print (seq_words)
             #TODO: Rename the variables properly to remove the hack below
             merged_words, merged_logprobs = seq_words, seq_logprobs
- 
+
             # total logprob of this sequence
-            seq_logprob = sum(lp[[idx]] for idx, lp in enumerate(merged_logprobs)
-                              if (lp[seq_word_ids[idx]] is not None) and (not numpy.isneginf(lp[seq_word_ids[idx]])))
+            for i, l in enumerate(merged_logprobs):
+                print (seq_words[i+1], l[seq_word_ids[i+1]])
+
+            seq_logprob = sum(lp[seq_word_ids[idx+1]] for idx, lp in enumerate(merged_logprobs)
+                              if (lp[seq_word_ids[idx+1]] is not None) and (not numpy.isneginf(lp[seq_word_ids[idx+1]])))
             # total logprob of all sequences
             total_logprob += seq_logprob
             # number of tokens, which may be subwords, including <unk>'s
@@ -308,12 +310,12 @@ def _output_vectors_text(input_file, vocabulary, scorer, output_file,
             # number of words, including <s>'s and <unk>'s
             num_words += len(merged_words)
             # number of word probabilities computed (may not include <unk>'s)
-            num_seq_probs = sum((lp[seq_word_ids[idx]] is not None) and (not numpy.isneginf(lp[seq_word_ids[idx]]))
+            num_seq_probs = sum((lp[seq_word_ids[idx+1]] is not None) and (not numpy.isneginf(lp[seq_word_ids[idx+1]]))
                                 for idx, lp in enumerate(merged_logprobs))
             num_probs += num_seq_probs
             # number of unks and zeroprobs (just for reporting)
-            num_unks += sum(lp[seq_word_ids[idx]] is None for idx, lp in enumerate(merged_logprobs))
-            num_zeroprobs += sum((lp[seq_word_ids[idx]] is not None) and numpy.isneginf(lp[seq_word_ids[idx]])
+            num_unks += sum(lp[seq_word_ids[idx+1]] is None for idx, lp in enumerate(merged_logprobs))
+            num_zeroprobs += sum((lp[seq_word_ids[idx+1]] is not None) and numpy.isneginf(lp[seq_word_ids[idx+1]])
                                  for idx, lp in enumerate(merged_logprobs))
             # number of sequences
             num_sentences += 1
@@ -546,10 +548,10 @@ def _write_output_vectors(vocabulary, words, logprobs, output_file, log_scale):
             output_file.write("{0} no predictions \n".format(
                 predicted))
         else:
-            output_file.write("log(p({0} | {1})) = [{2}, ".format(predicted, history, logprob[0]))
+            output_file.write("{0} {2} ".format(predicted, logprob[0]))
             for lp in logprob[1:-1]:
-                output_file.write("{0}, ".format(lp))
-            output_file.write("{0}]\n".format(logprob[-1]))
+                output_file.write("{0} ".format(lp))
+            output_file.write("{0}\n".format(logprob[-1]))
 
 def _score_utterances(input_file, vocabulary, scorer, output_file,
                       log_base=None):
