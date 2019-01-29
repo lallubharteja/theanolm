@@ -298,9 +298,6 @@ def _output_vectors_text(input_file, vocabulary, scorer, output_file,
             merged_words, merged_logprobs = seq_words, seq_logprobs
 
             # total logprob of this sequence
-            for i, l in enumerate(merged_logprobs):
-                print (seq_words[i+1], l[seq_word_ids[i+1]])
-
             seq_logprob = sum(lp[seq_word_ids[idx+1]] for idx, lp in enumerate(merged_logprobs)
                               if (lp[seq_word_ids[idx+1]] is not None) and (not numpy.isneginf(lp[seq_word_ids[idx+1]])))
             # total logprob of all sequences
