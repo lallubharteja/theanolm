@@ -545,7 +545,7 @@ def _write_output_vectors(vocabulary, words, logprobs, output_file, log_scale):
             output_file.write("{0} no predictions \n".format(
                 predicted))
         else:
-            output_file.write("{0} {2} ".format(predicted, logprob[0]))
+            output_file.write("{0} {1} ".format(predicted, logprob[0]))
             for lp in logprob[1:-1]:
                 output_file.write("{0} ".format(lp))
             output_file.write("{0}\n".format(logprob[-1]))
