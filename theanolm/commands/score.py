@@ -547,7 +547,7 @@ def _write_output_vectors(vocabulary, words, logprobs, output_file, log_scale):
         else:
             output_file.write("{} {:+.6f} ".format(predicted, logprob[0]))
             for lp in logprob[1:-1]:
-                output_file.write("{} ".format(lp))
+                output_file.write("{:+.6f} ".format(lp))
             output_file.write("{:+.6f}\n".format(logprob[-1]))
 
 def _score_utterances(input_file, vocabulary, scorer, output_file,
