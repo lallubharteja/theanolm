@@ -616,7 +616,20 @@ class Vocabulary(object):
             result /= total
 
         return result
+    def to_file(self, output_file):
+        """writes the vocabulary in the order of its indexes to the 
+        specified file
 
+        :rtype: None
+        :returns: nothing
+        """
+        i=0
+        while i < self.id_to_word.size():
+            output_file.write("{}\n".format(self.id_to_word[i]))
+            i++
+        return;
+
+    
     def __contains__(self, word):
         """Tests if ``word`` is included in the vocabulary.
 

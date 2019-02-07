@@ -60,6 +60,9 @@ def add_arguments(parser):
         help='distribute <unk> token probability among the out-of-shortlist '
              'words according to their unigram frequencies in the training '
              'data')
+    argument_group.add_argument(
+        '--vocabulary', metavar='FILE', type=TextFileType('w'), default=None,
+        help='write the LM vocabulary to this file')
 
     argument_group = parser.add_argument_group("configuration")
     argument_group.add_argument(
@@ -112,6 +115,9 @@ def score(args):
     default_device = get_default_device(args.default_device)
     network = Network.from_file(args.model_path, exclude_unk=args.exclude_unk,
                                 default_device=default_device)
+
+    if args.vocabulary:
+        network.vocabulary.to_file(args.vocabulary)
 
     logging.info("Building text scorer.")
     scorer = TextScorer(network, args.shortlist, args.exclude_unk, args.profile)
