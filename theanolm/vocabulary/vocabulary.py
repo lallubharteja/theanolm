@@ -626,7 +626,7 @@ class Vocabulary(object):
         i=0
         while i < self.id_to_word.size():
             output_file.write("{}\n".format(self.id_to_word[i]))
-            i++
+            i += 1
         return;
 
     
