@@ -474,6 +474,18 @@ class Network(object):
             raise RuntimeError("The final layer is not an output layer.")
         return self.output_layer.target_probs
 
+    def argsort_output(self):
+        """Returns the indexes of sorted output probabilities for the whole vocabulary.
+
+        :rtype: Variable
+        :returns: a symbolic 3-dimensional matrix that contains a probability
+                  for each time step, each sequence, and each output class
+        """
+
+        if not hasattr(self.output_layer, 'argsort_output'):
+            raise RuntimeError("The final layer is not an output layer.")
+        return self.output_layer.argsort_output
+
     def unnormalized_logprobs(self):
         """Returns the unnormalized log probabilities for the predicted words.
 

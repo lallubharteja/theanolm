@@ -86,6 +86,11 @@ class TextScorer(object):
         membership_probs_output_vec.tag.test_value = test_value(
             size=(20, 4, 5), high=1.0)
 
+        k = tensor.scalar('textscorer/k',
+                                         dtype='int64')
+        k.tag.test_value = 4
+        
+
         # Convert out-of-shortlist words to <unk> in input.
         shortlist_size = self._vocabulary.num_shortlist_words()
         input_word_ids = batch_word_ids[:-1]
@@ -102,7 +107,7 @@ class TextScorer(object):
 
         logprobs = tensor.log(network.target_probs())
         logprobs_output_vec = tensor.log(network.output_probs())
-        logprobs_output_vec = logprobs_output_vec[:, :, all_class_ids]
+        #logprobs_output_vec = logprobs_output_vec[:, :, all_class_ids]
         # Add logprobs from the class membership of the predicted word.
         
         logprobs += tensor.log(membership_probs)
@@ -150,10 +155,21 @@ class TextScorer(object):
                     (network.input_class_ids, input_class_ids),
                     (network.target_class_ids, target_class_ids),
                     (network.is_training, numpy.int8(0))],
-            name='target_logprobs',
+            name='output_logprobs',
             on_unused_input='ignore',
             profile=profile)
 
+        top_k = tensor.argsort(masked_logprobs_output_vec, axis=2)[:,:k]
+        self._output_top_k_indices_funciton = theano.function(
+            [batch_word_ids, batch_class_ids, all_class_ids, membership_probs_output_vec, network.mask, k],
+            [masked_logprobs_output_vec, top_k, mask],
+            givens=[(network.input_word_ids, input_word_ids),
+                    (network.input_class_ids, input_class_ids),
+                    (network.target_class_ids, target_class_ids),
+                    (network.is_training, numpy.int8(0))],
+            name='topk_indices',
+            on_unused_input='ignore',
+            profile=profile)
 
         # If some word is not in the training data, its class membership
         # probability will be zero. We want to ignore those words. Multiplying
@@ -170,7 +186,7 @@ class TextScorer(object):
             name='total_logprob',
             on_unused_input='ignore',
             profile=profile)
-
+        
         # These are updated by score_line().
         self.num_words = 0
         self.num_unks = 0
@@ -260,8 +276,8 @@ class TextScorer(object):
         :param mask: a 2-dimensional matrix, indexed by time step and sequence,
                      that masks out elements past the sequence ends
 
-        :rtype: list of lists
-        :returns: logprob of each word in each sequence, ``None`` values
+        :rtype: list of list of lists
+        :returns: logprob vector of each word in each sequence, ``None`` values
                   indicating excluded <unk> tokens
         """
 
@@ -285,6 +301,70 @@ class TextScorer(object):
             result.append(seq_logprobs)
 
         return result
+
+    def score_top_k(self, word_ids, class_ids, all_class_ids, membership_probs_output_vec, k, mask):
+        """Computes the log probability vectors predicted by the neural network for
+        the words in a mini-batch and the topk indices for this output vector.
+
+        The result will be returned in a list of lists. The indices will be a
+        transpose of those of the input matrices, so that the first index is the
+        sequence, not the time step. The lists will contain ``None`` values in
+        place of any ``<unk>`` tokens, if the constructor was given
+        ``exclude_unk=True``. When using a shortlist, the lists will always
+        contain ``None`` in place of OOV words, and if ``exclude_unk=True`` was
+        given, also in place of OOS words. Words with zero class membership
+        probability will have ``-inf`` log probability.
+
+        :type word_ids: numpy.ndarray of an integer type
+        :param word_ids: a 2-dimensional matrix, indexed by time step and
+                         sequence, that contains the word IDs
+
+        :type class_ids: numpy.ndarray of an integer type
+        :param class_ids: a 1-dimensional matrix, that contains the class IDs
+                          of the words in the vocabulary
+
+        :type membership_probs: numpy.ndarray of a floating point type
+        :param membership_probs: a 1-dimensional array, that contains the class
+                                 membership probabilities of all the words in
+                                 the vocabulary
+
+        :type mask: numpy.ndarray of a floating point type
+        :param mask: a 2-dimensional matrix, indexed by time step and sequence,
+                     that masks out elements past the sequence ends
+
+        :rtype: list of list of lists
+        :returns: topk indices and  logprob vectors of each word in each sequence,
+                   ``None`` values indicating excluded <unk> tokens
+        """
+
+        result_lp = []
+        result_tk = []
+        membership_probs_output_vec = membership_probs_output_vec.astype(theano.config.floatX)
+
+        # output_topk_indices_function() uses the word and class IDs of the entire
+        # mini-batch, but membership probs and mask are only for the output.
+        logprobs, topk, new_mask = self._output_top_k_indices_funciton(word_ids,
+                                                            class_ids,
+                                                            all_class_ids,
+                                                            membership_probs_output_vec[1:], 
+                                                            mask[1:],
+                                                            k)
+
+        for seq_index in range(logprobs.shape[1]):
+            seq_mask = mask[1:, seq_index]
+            seq_logprobs = logprobs[seq_mask == 1, seq_index, :]
+            seq_topk = topk[seq_mask == 1, seq_index, :]
+            # The new mask also masks excluded tokens, replace those with None.
+            seq_mask = new_mask[seq_mask == 1, seq_index]
+            seq_logprobs = [lp if m == 1 else None
+                            for lp, m in zip(seq_logprobs, seq_mask)]
+            seq_topk = [tk if m == 1 else None
+                            for tk, m in zip(seq_topk, seq_mask)]
+            result_lp.append(seq_logprobs)
+            result_tk.append(seq_topk)
+            
+
+        return result_lp, result_tk
 
     def compute_perplexity(self, batch_iter):
         """Computes the perplexity of text read using the given iterator.

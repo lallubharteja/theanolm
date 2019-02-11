@@ -38,9 +38,10 @@ def add_arguments(parser):
     argument_group = parser.add_argument_group("scoring")
     argument_group.add_argument(
         '--output', metavar='DETAIL', type=str, default='perplexity',
-        choices=['perplexity', 'utterance-scores', 'word-scores', 'word-output-vectors'],
+        choices=['perplexity', 'utterance-scores', 'word-scores', 'word-output-vectors', 'topk-scores'],
         help='what to output, one of "perplexity", "utterance-scores", '
-             '"word-scores" (default "perplexity")')
+             '"word-scores" "word-output-vectors" "topk-vectors"'
+              '(default "perplexity")')
     argument_group.add_argument(
         '--log-base', metavar='B', type=int, default=None,
         help='convert output log probabilities to base B (default is the '
@@ -60,6 +61,9 @@ def add_arguments(parser):
         help='distribute <unk> token probability among the out-of-shortlist '
              'words according to their unigram frequencies in the training '
              'data')
+    argument_group.add_argument(
+        '--k', metavar='K', type=int, default=2,
+        help='K in topK for outputting topk scores (default is 2)')
     argument_group.add_argument(
         '--vocabulary', metavar='FILE', type=TextFileType('w'), default=None,
         help='write the LM vocabulary to this file')
@@ -132,6 +136,9 @@ def score(args):
     elif args.output == 'word-output-vectors':
         _output_vectors_text(args.input_file, network.vocabulary, scorer,
                     args.output_file, args.log_base)
+    elif args.output == 'topk-scores': 
+        _topk_scores_text(args.input_file, network.vocabulary, scorer,
+                    args.output_file, args.log_base, args.k)
     elif args.output == 'utterance-scores':
         _score_utterances(args.input_file, network.vocabulary, scorer,
                           args.output_file, args.log_base)
@@ -348,6 +355,85 @@ def _output_vectors_text(input_file, vocabulary, scorer, output_file,
                 cross_entropy, log_base))
         output_file.write("Perplexity: {0}\n".format(perplexity))
 
+def _topk_scores_text(input_file, vocabulary, scorer, output_file,
+                log_base=None, k=2):
+    """Reads text from ``input_file``, computes perplexity using
+    ``scorer``, and writes to ``output_file``.
+
+    :type input_file: file object
+    :param input_file: a file that contains the input sentences in SRILM n-best
+                       format
+
+    :type vocabulary: Vocabulary
+    :param vocabulary: vocabulary that provides mapping between words and word
+                       IDs
+
+    :type scorer: TextScorer
+    :param scorer: a text scorer for rescoring the input sentences
+
+    :type output_file: file object
+    :param output_file: a file where to write the output n-best list in SRILM
+                        format
+
+    :type log_base: int
+    :param log_base: if set to other than None, convert log probabilities to
+                     this base
+    """
+
+    scoring_iter = \
+        ScoringBatchIterator(input_file,
+                             vocabulary,
+                             batch_size=16,
+                             max_sequence_length=None,
+                             map_oos_to_unk=False)
+    log_scale = 1.0 if log_base is None else numpy.log(log_base)
+
+    total_logprob = 0.0
+    num_sentences = 0
+    num_tokens = 0
+    num_words = 0
+    num_probs = 0
+    num_unks = 0
+    num_zeroprobs = 0
+    all_word_ids = numpy.arange(vocabulary.num_words())
+    all_class_ids, membership_probs = vocabulary.get_class_memberships(all_word_ids)
+    for word_ids, words, mask in scoring_iter:
+        class_ids, _  = vocabulary.get_class_memberships(word_ids)
+        
+        
+        membership_probs_output_vec = numpy.tile(membership_probs,(word_ids.shape[0],word_ids.shape[1],1))
+        logprobs, topk_idxes = scorer.score_top_k(word_ids, class_ids, all_class_ids, membership_probs_output_vec, k+1,
+                                      mask)
+        for seq_index, seq_logprobs in enumerate(logprobs):
+            seq_word_ids = word_ids[:, seq_index]
+            seq_mask = mask[:, seq_index]
+            seq_word_ids = seq_word_ids[seq_mask == 1]
+            seq_words = words[seq_index]
+            #TODO: Rename the variables properly to remove the hack below
+            merged_words, merged_logprobs = seq_words, seq_logprobs
+
+            # total logprob of this sequence
+            seq_logprob = sum(lp[seq_word_ids[idx+1]] for idx, lp in enumerate(merged_logprobs)
+                              if (lp[seq_word_ids[idx+1]] is not None) and (not numpy.isneginf(lp[seq_word_ids[idx+1]])))
+            # total logprob of all sequences
+            total_logprob += seq_logprob
+            # number of tokens, which may be subwords, including <unk>'s
+            num_tokens += len(seq_word_ids)
+            # number of words, including <s>'s and <unk>'s
+            num_words += len(merged_words)
+            # number of word probabilities computed (may not include <unk>'s)
+            num_seq_probs = sum((lp[seq_word_ids[idx+1]] is not None) and (not numpy.isneginf(lp[seq_word_ids[idx+1]]))
+                                for idx, lp in enumerate(merged_logprobs))
+            num_probs += num_seq_probs
+
+            _write_topk_scores(vocabulary, merged_words, merged_logprobs,
+                               topk_idxes, output_file, log_scale)
+
+    if num_words > 0:
+        cross_entropy = -total_logprob / num_probs
+        perplexity = numpy.exp(cross_entropy)
+        output_file.write("Perplexity: {0}\n".format(perplexity))
+
 def _merge_subwords(subwords, subword_logprobs, marking):
     """Creates a word list from a subword list.
 
@@ -511,42 +597,13 @@ def _write_output_vectors(vocabulary, words, logprobs, output_file, log_scale):
     :type log_scale: float
     :param log_scale: divide logprobs by this amount to convert to correct base
     """
-
-    def word_info(vocabulary, word):
-        """Returns information whether a word is in the vocabulary and in the
-        shortlist.
-        """
-        if not word in vocabulary:
-            return word + ':OOV'
-        word_id = vocabulary.word_to_id[word]
-        if vocabulary.in_shortlist(word_id):
-            return word + ':shortlist'
-        else:
-            return word + ':OOS'
-
     if len(logprobs) != len(words) - 1:
         raise ValueError("Number of logprobs should be exactly one less than "
                          "the number of words.")
 
     logprobs = [None if x is None else x / log_scale for x in logprobs]
     for index, logprob in enumerate(logprobs):
-        if index - 2 > 0:
-            history_list = ['...']
-            history_list.extend(words[index - 2:index + 1])
-        else:
-            history_list = words[:index + 1]
-        history_list = [' '.join(word) if isinstance(word, list) else word
-                        for word in history_list]
-        history = ' '.join(history_list)
-
         predicted = words[index + 1]
-        if isinstance(predicted, list):
-            info = ' '.join(word_info(vocabulary, subword)
-                            for subword in predicted)
-            predicted = ' '.join(predicted)
-        else:
-            info = word_info(vocabulary, predicted)
-
         if logprob is None:
             output_file.write("{0} no predictions \n".format(
                 predicted))
@@ -555,6 +612,55 @@ def _write_output_vectors(vocabulary, words, logprobs, output_file, log_scale):
             for lp in logprob[1:-1]:
                 output_file.write("{:+.6f} ".format(lp))
             output_file.write("{:+.6f}\n".format(logprob[-1]))
+
+def _write_topk_scores(vocabulary, words, logprobs, topk_idxes, output_file, log_scale):
+    """Writes word-level topk output vector scores to an output file.
+
+    :type vocabulary: Vocabulary
+    :param vocabulary: vocabulary for printing information about which word are
+                       predicted by the network
+
+    :type words: list
+    :param words: either word strings or one list for each word that contains
+                  the subwords
+
+    :type logprobs: list of floats
+    :param logprobs: logprob of each word starting from the second word
+
+    :type output_file: file object
+    :param output_file: a file where to write the output
+
+    :type log_scale: float
+    :param log_scale: divide logprobs by this amount to convert to correct base
+    """
+
+    if len(logprobs) != len(words) - 1:
+        raise ValueError("Number of logprobs should be exactly one less than "
+                         "the number of words.")
+
+    logprobs = [None if x is None else x / log_scale for x in logprobs]
+    for index, topk in enumerate(topk_idxes):
+        predicted = words[index + 1]
+        logprob = logprobs[index]
+        if logprob is None:
+            output_file.write("{0} no predictions \n".format(
+                predicted))
+        else:
+            pred_word_id = vocabulary.words_to_ids([predicted])[0]
+            output_file.write("{} {:+.6f} ".format(predicted, logprob[pred_word_id]))
+            found = False
+            try: 
+                found = topk.index(pred_word_id) 
+            except ValueError: 
+                found = False
+            if found:
+                topk = topk.pop(found)
+            else:
+                topk = topk[:-1]
+            for idx in topk[:-1]:
+                output_file.write("{} {:+.6f} ".format(vocabulary.words([idx])[0], logprob[idx]))
+            idx = topk[-1]
+            output_file.write("{} {:+.6f}\n".format(vocabulary.words([idx])[0], logprob[idx]))
 
 def _score_utterances(input_file, vocabulary, scorer, output_file,
                       log_base=None):

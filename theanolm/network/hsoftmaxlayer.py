@@ -55,6 +55,7 @@ class HSoftmaxLayer(BasicLayer):
         self.output = None
         self.output_probs = None
         self.target_probs = None
+        self.argsort_output = None
 
     def create_structure(self):
         """Creates the symbolic graph of this layer.
@@ -97,6 +98,11 @@ class HSoftmaxLayer(BasicLayer):
         self.output_probs = probs.reshape([num_time_steps,
                                            num_sequences,
                                            self.output_size])
+        
+        argsort_output = tensor.argsort(probs,axis=1)
+        self.argsort_output = argsort_output.reshape([num_time_steps,
+                                                  num_sequences,
+                                                  self.output_size])
 
         # Next create the output for target classes. It can only be used when
         # self._network.target_class_ids is given to the function.
