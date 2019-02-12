@@ -651,11 +651,11 @@ def _write_topk_scores(vocabulary, words, logprobs, topk_idxes, output_file, log
             output_file.write("{} {:+.6f} ".format(predicted, logprob[pred_word_id]))
             found = None
             try: 
-                found = numpy.where(topk==pred_word_id)[0][0] 
+                found = numpy.where(topk==pred_word_id) 
             except ValueError: 
                 found = None
             if found:
-                topk = numpy.delete(topk,[found])
+                topk = numpy.delete(topk,[found[0][0]])
             else:
                 topk = topk[:-1]
             for idx in topk[:-1]:
