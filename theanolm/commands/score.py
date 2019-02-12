@@ -658,9 +658,9 @@ def _write_topk_scores(vocabulary, words, logprobs, topk_idxes, output_file, log
             else:
                 topk = topk[:-1]
             for idx in topk[:-1]:
-                output_file.write("{} {:+.6f} ".format(vocabulary.words([idx])[0], logprob[idx]))
+                output_file.write("{} {:+.6f} ".format(vocabulary.id_to_word[idx], logprob[idx]))
             idx = topk[-1]
-            output_file.write("{} {:+.6f}\n".format(vocabulary.words([idx])[0], logprob[idx]))
+            output_file.write("{} {:+.6f}\n".format(vocabulary.id_to_word[idx], logprob[idx]))
 
 def _score_utterances(input_file, vocabulary, scorer, output_file,
                       log_base=None):
