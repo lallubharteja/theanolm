@@ -649,12 +649,8 @@ def _write_topk_scores(vocabulary, words, logprobs, topk_idxes, output_file, log
         else:
             pred_word_id = vocabulary.words_to_ids([predicted])[0]
             output_file.write("{} {:+.6f} ".format(predicted, logprob[pred_word_id]))
-            found = None
-            try: 
-                found = numpy.where(topk==pred_word_id) 
-            except ValueError: 
-                found = None
-            if found:
+            found = numpy.where(topk==pred_word_id) 
+            if found[0].size > 0 :
                 topk = numpy.delete(topk,[found[0][0]])
             else:
                 topk = topk[:-1]
