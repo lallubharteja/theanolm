@@ -411,7 +411,7 @@ def _topk_scores_text(input_file, vocabulary, scorer, output_file,
             seq_words = words[seq_index]
             #TODO: Rename the variables properly to remove the hack below
             merged_words, merged_logprobs = seq_words, seq_logprobs
-            seq_top_idxes = topk_idxes[seq_index]
+            seq_topk_idxes = topk_idxes[seq_index]
 
             # total logprob of this sequence
             seq_logprob = sum(lp[seq_word_ids[idx+1]] for idx, lp in enumerate(merged_logprobs)
@@ -651,11 +651,11 @@ def _write_topk_scores(vocabulary, words, logprobs, topk_idxes, output_file, log
             output_file.write("{} {:+.6f} ".format(predicted, logprob[pred_word_id]))
             found = False
             try: 
-                found = topk.index(pred_word_id) 
+                found = numpy.where(topk==pred_word_id) 
             except ValueError: 
                 found = False
             if found:
-                topk = topk.pop(found)
+                topk = numpy.delete(topk,[found])
             else:
                 topk = topk[:-1]
             for idx in topk[:-1]:
