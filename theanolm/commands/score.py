@@ -411,6 +411,7 @@ def _topk_scores_text(input_file, vocabulary, scorer, output_file,
             seq_words = words[seq_index]
             #TODO: Rename the variables properly to remove the hack below
             merged_words, merged_logprobs = seq_words, seq_logprobs
+            seq_top_idxes = topk_idxes[seq_index]
 
             # total logprob of this sequence
             seq_logprob = sum(lp[seq_word_ids[idx+1]] for idx, lp in enumerate(merged_logprobs)
@@ -427,7 +428,7 @@ def _topk_scores_text(input_file, vocabulary, scorer, output_file,
             num_probs += num_seq_probs
 
             _write_topk_scores(vocabulary, merged_words, merged_logprobs,
-                               topk_idxes, output_file, log_scale)
+                               seq_topk_idxes, output_file, log_scale)
 
     if num_words > 0:
         cross_entropy = -total_logprob / num_probs

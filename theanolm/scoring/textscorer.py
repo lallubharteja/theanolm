@@ -159,7 +159,7 @@ class TextScorer(object):
             on_unused_input='ignore',
             profile=profile)
 
-        top_k = tensor.argsort(masked_logprobs_output_vec, axis=2)[:,-k:]
+        top_k = tensor.argsort(masked_logprobs_output_vec, axis=2)[:, : , -k:]
         self._output_top_k_indices_funciton = theano.function(
             [batch_word_ids, batch_class_ids, all_class_ids, membership_probs_output_vec, network.mask, k],
             [masked_logprobs_output_vec, top_k, mask],
