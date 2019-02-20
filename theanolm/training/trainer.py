@@ -364,8 +364,6 @@ class Trainer(object):
             raise IncompatibleStateError("Training state is missing.")
         h5_trainer = self._candidate_state['trainer']
 
-        #self._optimizer.set_state(self._candidate_state)
-
     def num_validations(self):
         """Returns the number of validations performed.
 

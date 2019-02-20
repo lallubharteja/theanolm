@@ -450,7 +450,7 @@ def train(args):
             print("Cost function computation graph:")
             theano.printing.debugprint(optimizer.gradient_update_function)
         
-        trainer.initialize(network, state, optimizer,args.load_and_train)
+        trainer.initialize(network, state, optimizer, args.load_and_train)
 
         if args.validation_file is not None:
             logging.info("Building text scorer for cross-validation.")
