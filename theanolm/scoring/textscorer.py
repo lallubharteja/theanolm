@@ -107,7 +107,9 @@ class TextScorer(object):
 
         logprobs = tensor.log(network.target_probs())
         logprobs_output_vec = tensor.log(network.output_probs())
-        #logprobs_output_vec = logprobs_output_vec[:, :, all_class_ids]
+        if (logprobs_output_vec.shape[2] != membership_probs_output_vec.shape[2]):
+            logprobs_output_vec = logprobs_output_vec[:, :, all_class_ids]
+        
         # Add logprobs from the class membership of the predicted word.
         
         logprobs += tensor.log(membership_probs)
