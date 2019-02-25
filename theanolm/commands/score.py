@@ -72,6 +72,9 @@ def add_arguments(parser):
     argument_group.add_argument(
         '--default-device', metavar='DEVICE', type=str, default=None,
         help='when multiple GPUs are present, use DEVICE as default')
+    argument_group.add_argument(
+        '--batch-size', metavar='N', type=int, default=16,
+        help='each mini-batch will contain N sentences (default 16)')
 
     argument_group = parser.add_argument_group("logging and debugging")
     argument_group.add_argument(
@@ -138,7 +141,7 @@ def score(args):
                     args.output_file, args.log_base)
     elif args.output == 'topk-scores': 
         _topk_scores_text(args.input_file, network.vocabulary, scorer,
-                    args.output_file, args.log_base, args.k)
+                    args.output_file, args.log_base, args.k, args.batch_size)
     elif args.output == 'utterance-scores':
         _score_utterances(args.input_file, network.vocabulary, scorer,
                           args.output_file, args.log_base)
@@ -356,7 +359,7 @@ def _output_vectors_text(input_file, vocabulary, scorer, output_file,
         output_file.write("Perplexity: {0}\n".format(perplexity))
 
 def _topk_scores_text(input_file, vocabulary, scorer, output_file,
-                log_base=None, k=2):
+                log_base=None, k=2, bsize=16):
     """Reads text from ``input_file``, computes perplexity using
     ``scorer``, and writes to ``output_file``.
 
@@ -383,7 +386,7 @@ def _topk_scores_text(input_file, vocabulary, scorer, output_file,
     scoring_iter = \
         ScoringBatchIterator(input_file,
                              vocabulary,
-                             batch_size=16,
+                             batch_size=bsize,
                              max_sequence_length=None,
                              map_oos_to_unk=False)
     log_scale = 1.0 if log_base is None else numpy.log(log_base)
