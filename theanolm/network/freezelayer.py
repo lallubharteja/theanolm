@@ -15,7 +15,7 @@ class FreezeLayer(BasicLayer):
     """Freeze Layer
 
     A freeze layer is not a regular layer in the sense that it doesn't contain
-    any neurons. It simply freezes the weights matrices occuring before it. It
+    any neurons. It simply freezes the weights matrices occurring before it. It
     provides two parameters:
      - switch: If set as True, all the weights before this layer are assumed to 
        be frozen (are not retrained) otherwise these weights are trained 
