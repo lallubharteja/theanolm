@@ -347,6 +347,8 @@ class Architecture(object):
                 if "freeze" in h5_group.attrs["name"]:
                     if variable == "switch":
                         continue
+                    elif variable == "init":
+                        continue
                 if values != h5_value:
                     raise IncompatibleStateError(
                         "Neural network state has {0}={2}, while this "
