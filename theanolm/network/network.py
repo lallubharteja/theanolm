@@ -390,10 +390,13 @@ class Network(object):
         """
 
         for layer in self.layers.values():
-            layer.set_state(state)
             if "freeze" in layer.name:
                 if not layer._init:
+                    layer._init=True
+                    layer.set_state(state)
                     break
+            layer.set_state(state)
+        
 
         try:
             self.architecture.check_state(state)
