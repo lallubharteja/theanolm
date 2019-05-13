@@ -165,6 +165,9 @@ class Network(object):
         # During training, the output layer bias vector is initialized to the
         # unigram probabilities.
         self.class_prior_probs = class_prior_probs
+        
+        # Variable to check if the initialize the using freeze layer or not
+        self.training = True
 
         # A shortlist model adds these logprobs to OOS logprobs predicted by the
         # network.
@@ -293,6 +296,7 @@ class Network(object):
             result = cls(architecture, vocabulary, mode=mode,
                          exclude_unk=exclude_unk, default_device=default_device)
             logging.info("Restoring neural network state.")
+            result.set_training()
             result.set_state(state)
             return result
 
@@ -391,7 +395,7 @@ class Network(object):
 
         for layer in self.layers.values():
             layer.set_state(state)
-            if self.is_training:
+            if self.training:
                 if "freeze" in layer.name:
                     if not layer._init:
                         break
@@ -424,6 +428,18 @@ class Network(object):
                 if layer._switch:
                     result.clear()
         return result
+
+    def set_training(self, training=False):
+        """ Sets the value of training variable.
+        
+        This function is only used when the network state is initialized from a file
+
+        :type training: bool
+        :param training: value = False all the weights are initialized from the file
+                         value = True  weights are initialized depending on the value of init in the freeze layer
+        """
+        
+        self.training = training
 
     def add_recurrent_state(self, size):
         """Adds a recurrent state variable and returns its index.
