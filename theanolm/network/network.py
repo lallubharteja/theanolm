@@ -168,6 +168,7 @@ class Network(object):
         
         # Variable to check if the initialize the using freeze layer or not
         self.training = True
+        logging.info("Seting to the neural network to train.")
 
         # A shortlist model adds these logprobs to OOS logprobs predicted by the
         # network.
@@ -297,6 +298,7 @@ class Network(object):
                          exclude_unk=exclude_unk, default_device=default_device)
             logging.info("Restoring neural network state.")
             result.set_training()
+            logging.info("Reseting to the neural network to evaluate.")
             result.set_state(state)
             return result
 
